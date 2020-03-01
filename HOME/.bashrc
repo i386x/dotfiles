@@ -22,3 +22,4 @@ fi
 alias la='ls -la'
 alias md=mkdir
 alias brq='nmcli --ask con up id "Brno (BRQ)"'
+export PS1='\033[32m[\u@\h \W]\$ \033[0m'
