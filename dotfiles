@@ -9,7 +9,7 @@ STDOUT="$(mktemp /tmp/${ME}XXXXX.stdout)"
 STDERR="$(mktemp /tmp/${ME}XXXXX.stderr)"
 
 FILES=(
-  'HOME/.bashrc'
+  'HOME/.bashrc.d'
   'HOME/.config/enchant/en_US.dic'
 )
 
@@ -30,9 +30,10 @@ function qecho() {
   fi
 }
 
-function vecho() {
-  ( QUITE=""; qecho "$@" )
-}
+function vecho() (
+  QUITE=""
+  qecho "$@"
+)
 
 function qcat() {
   if [[ -z "${QUITE:-}" ]]; then
@@ -68,10 +69,10 @@ function destpath() {
   case "$1" in
     HOME/*)
       echo "${HOME}/${1#*/}"
-      ;;
+    ;;
     *)
       echo "$1"
-      ;;
+    ;;
   esac
 }
 
@@ -91,9 +92,9 @@ function file_backup() {
 
   if [[ -e "${P}" ]]; then
     ensure_directory "${D}"
-    runcmd "cp -v '${P}' '${D}'"
+    runcmd "cp -rv '${P}' '${D}'"
   else
-    qecho ${blue} "File '${P}' does not exist, skipping."
+    qecho ${blue} "File or directory '${P}' does not exist, skipping."
   fi
 }
 
@@ -123,9 +124,9 @@ function file_restore() {
     if [[ "${BACKUP:-}" ]]; then
       backup_old "${D}"
     fi
-    runcmd "cp -v '${P}' '${D}'"
+    runcmd "cp -rv '${P}' '${D}'"
   else
-    qecho ${blue} "File '${P}' does not exist, skipping."
+    qecho ${blue} "File or directory '${P}' does not exist, skipping."
   fi
 }
 
@@ -175,23 +176,23 @@ function process_options() {
     case "$1" in
       --backup|-b)
         BACKUP=y
-        ;;
+      ;;
       --dry-run|-d)
         DRYRUN=y
-        ;;
+      ;;
       --help|-h|-\?)
         usage
         exit 0
-        ;;
+      ;;
       --quite|-q)
         QUITE=y
-        ;;
+      ;;
       restore|backup)
         ACTION="$1"
-        ;;
+      ;;
       *)
         error "Invalid option/action: '$1'."
-        ;;
+      ;;
     esac
     shift
   done || :
