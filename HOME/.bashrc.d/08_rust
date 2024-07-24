@@ -1,0 +1,20 @@
+# Rust utilities
+
+function r:rg() (
+    if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+        echo "Usage: ${FUNCNAME[0]} [-h|--help] [ARG]..."
+        echo "Grep over Rust source files"
+        echo ""
+        echo "Grep over Rust source files under the current directory"
+        echo "and its sub-directories. Remaining arguments are passed"
+        echo "to \`grep\`."
+        echo ""
+        echo "Options:"
+        echo "  -h, --help    print this screen and exit"
+        u:die -0
+    elif [[ "${1:-}" == "--" ]]; then
+        shift
+    fi
+
+    find . -name '*.rs' -type f -print | xargs grep --color=always "$@"
+)

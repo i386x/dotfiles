@@ -1,0 +1,10 @@
+# Aliases
+
+alias reload='source ~/.bashrc'
+alias la='ls -la'
+alias md=mkdir
+alias brq='nmcli --ask con up id "Brno (BRQ)"'
+alias ams2='nmcli --ask con up id "Amsterdam (AMS2)"'
+alias fkinit='kinit ${USER}@FEDORAPROJECT.ORG'
+alias rkinit='kinit ${USER}@REDHAT.COM'
+alias ikinit='kinit ${USER}@IPA.REDHAT.COM'

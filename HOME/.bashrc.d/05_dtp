@@ -1,0 +1,72 @@
+# Desktop publishing utilities
+
+function pdf:merge() (
+    local opts
+    local output=""
+    local inputs=()
+
+    opts=$(
+        getopt \
+            --options o:h \
+            --longoptions output:,help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error ${REPLY}; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        u:die
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [OPTION]... [FILE]..."
+                echo "Merge PDF files into one PDF document"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help             print this screen and exit"
+                echo "  -o, --output=OUPTUT    the name of the output PDF"
+                echo "                         document"
+                u:die -0
+            ;;
+            -o | --output)
+                output="${2:-}"
+                shift 2
+            ;;
+            --)
+                shift
+                while [[ $# -gt 0 ]]; do
+                    inputs+=( "${1:-}" )
+                    shift
+                done
+            ;;
+            *)
+                u:die "${FUNCNAME[0]}: Internal error"
+            ;;
+        esac
+    done
+
+    if [[ -z "${output}" ]]; then
+        u:die "${FUNCNAME[0]}: Missing --output"
+    fi
+
+    if [[ ${#inputs[@]} -eq 1 ]]; then
+        cp "${inputs[0]}" "${output}"
+    elif [[ ${#inputs[@]} -ge 2 ]]; then
+        gs \
+            -sDEVICE=pdfwrite \
+            -dCompatibilityLevel=1.4 \
+            -dPDFSETTINGS=/default \
+            -dNOPAUSE \
+            -dQUIET \
+            -dBATCH \
+            -dDetectDuplicateImages \
+            -dCompressFonts=true \
+            -r150 \
+            -sOutputFile="${output}" \
+            "${inputs[@]}"
+    fi
+)

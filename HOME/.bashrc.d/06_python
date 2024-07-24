@@ -1,0 +1,107 @@
+# Python utilities
+
+function _:venv_root() {
+    echo "${HOME}/.myvenvs"
+}
+
+function py:venv() {
+    local opts
+    local root="$(_:venv_root)"
+    local actions=()
+    local venv=""
+    local exitcode=0
+
+    opts=$(
+        getopt \
+            --options h,l \
+            --longoptions delete:,help,list,new: \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            --delete)
+                actions+=( "D:${2:-}" )
+                shift 2
+            ;;
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [OPTION]... [VENV]"
+                echo "Manage Python venvs"
+                echo ""
+                echo "If no option is given, enter the specified venv. To"
+                echo "leave the venv, type \`deactivate\` from the venv."
+                echo ""
+                echo "Options:"
+                echo "  --delete=VENV    remove the VENV under ${root}"
+                echo "  -h, --help       print this screen and exit"
+                echo "  -l, --list       list all venvs under ${root}"
+                echo "  --new=VENV       create VENV under ${root}"
+                return 0
+            ;;
+            -l | --list)
+                actions+=( "L:" )
+                shift
+            ;;
+            --new)
+                actions+=( "N:${2:-}" )
+                shift 2
+            ;;
+            --)
+                shift
+                venv="${1:-}"
+                break
+            ;;
+            *)
+                _:error "${FUNCNAME[0]}: Internal error"
+                return 1
+            ;;
+        esac
+    done
+
+    if [[ ${#actions[@]} -gt 0 ]]; then
+        for action in "${actions[@]}"; do
+            case "${action}" in
+                D:*)
+                    venv="${action:2}"
+                    if [[ -n "${venv}" && -d "${root}/${venv}" ]]; then
+                        rm -rfv "${root}/${venv}"
+                        exitcode=$?
+                    fi
+                ;;
+                L:*)
+                    ls -la "${root}"
+                    exitcode=$?
+                ;;
+                N:*)
+                    venv="${action:2}"
+                    if [[ -z "${venv}" ]]; then
+                        _:error "${FUNCNAME[0]}: Missing venv name"
+                        exitcode=1
+                    elif [[ -d "${root}/${venv}" ]]; then
+                        exitcode=0
+                    else
+                        mkdir -p "${root}"
+                        python -m venv "${root}/${venv}"
+                        exitcode=$?
+                    fi
+                ;;
+            esac
+        done
+        return ${exitcode}
+    fi
+
+    if [[ -z "${venv}" || ! -d "${root}/${venv}" ]]; then
+        _:error "${FUNCNAME[0]}: venv '${venv}' does not exist"
+        return 1
+    fi
+
+    source "${root}/${venv}/bin/activate"
+}

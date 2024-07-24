@@ -1,0 +1,46 @@
+# Container utilities
+
+function _:compose_up() {
+    local composer
+
+    composer="${1:-true}"
+    shift
+    "${composer}" up -d
+}
+
+function _:compose_down() {
+    local composer
+
+    composer="${1:-true}"
+    shift
+    "${composer}" down
+}
+
+function _:compose_logs() {
+    local composer
+
+    composer="${1:-true}"
+    shift
+    "${composer}" logs "$@"
+}
+
+function c:ps() {
+    if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+        echo "Usage: ${FUNCNAME[0]} [-h|--help] [ARG]..."
+        echo "Show all active containers"
+        echo ""
+        echo "The rest of unprocessed arguments is passed to \`podman ps\`."
+        echo ""
+        echo "Options:"
+        echo "  -h, --help    print this screen and exit"
+        return 0
+    elif [[ "${1:-}" == "--" ]]; then
+        shift
+    fi
+
+    if [[ $# -eq 0 ]]; then
+        eval set -- '-a'
+    fi
+
+    podman ps "$@"
+}

@@ -1,0 +1,3 @@
+# Test management tool utilities
+
+eval "$(_TMT_COMPLETE=source_bash tmt)"

@@ -1,0 +1,294 @@
+# Git utilities
+
+function git:project() {
+    local opts
+    local project=""
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Print the name of the git remote origin (without .git" \
+                     "suffix)"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                return 0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                _:error "${FUNCNAME[0]}: Internal error"
+                return 1
+            ;;
+        esac
+    done
+
+    project="$(git remote get-url origin 2>/dev/null)"
+    project="${project##*/}"
+    echo "${project%*.git}"
+}
+
+function git:topdir() {
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Print the top directory of the git repository"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                return 0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                _:error "${FUNCNAME[0]}: Internal error"
+                return 1
+            ;;
+        esac
+    done
+
+    git rev-parse --show-toplevel 2>/dev/null
+}
+
+function _:git_cd_topdir() {
+    local topdir="$(git:topdir)"
+
+    if [[ -z "${topdir}" ]]; then
+        _:error "${FUNCNAME[0]}: Failed to find git top level directory"
+        return 1
+    fi
+
+    cd "${topdir}"
+}
+
+function git:du() (
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        u:die
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Print the git repository's disk usage"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                u:die -0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                u:die "${FUNCNAME[0]}: Internal error"
+            ;;
+        esac
+    done
+
+    _:git_cd_topdir || u:die
+    du -hs .
+)
+
+function _:get_git_dirs() (
+    readarray -t dirs < <(find "${1:-.}" -maxdepth 1 -type d -print)
+    for d in "${dirs[@]}"; do
+        if [[ -d "${d}/.git" ]]; then
+            echo "${d}"
+        elif [[ "${d}" != "${1:-.}" ]]; then
+            _:get_git_dirs "${d}"
+        fi
+    done
+)
+
+function _:git_project_status() (
+    local neednl=0
+
+    cd "${1:-.}"
+
+    if [[ -n "$(git status --porcelain)" ]]; then
+        _:hi_command 'git status'
+        git -c color.ui=always status
+        u:die -0
+    fi
+
+    declare -A locals
+    declare -A remotes
+
+    while read -r; do
+        key=$(echo ${REPLY} | sed -e 's/\*//g' -e 's/ //g')
+        if [[ "${REPLY}" =~ \* ]]; then
+            locals["${key}"]=1
+        else
+            locals["${key}"]=0
+        fi
+    done < <(git branch --color=never)
+
+    while read -r; do
+        if [[ "${REPLY}" =~ ([^ ]+).* ]]; then
+            remote="${BASH_REMATCH[1]}"
+            branch="${remote##*/}"
+            if [[ -n "${locals[${branch}]}" ]]; then
+                remotes["${remote}"]="${branch}"
+            fi
+        fi
+    done < <(git branch -r --color=never)
+
+    current="$(git branch --show-current)"
+
+    for branch in "${!locals[@]}"; do
+        if [[ "${locals[${branch}]}" -ne 1 ]]; then
+            git checkout "${branch}" >/dev/null 2>&1
+        fi
+
+        if [[ -n "$(git status --porcelain)" ]]; then
+            if [[ ${neednl} -eq 1 ]]; then
+                echo ""
+            fi
+            _:hi_command "git status" "${branch}"
+            git -c color.ui=always status
+            neednl=1
+        fi
+
+        if [[ "${locals[${branch}]}" -ne 1 ]]; then
+            git checkout "${current}" >/dev/null 2>&1
+        fi
+    done
+
+    for remote in "${!remotes[@]}"; do
+        branch="${remotes[${remote}]}"
+        cherry="$(git cherry -v "${remote}" "${branch}")"
+        if [[ -n "${cherry}" ]]; then
+            if [[ ${neednl} -eq 1 ]]; then
+                echo ""
+            fi
+            _:hi_command "git cherry -v '${remote}' '${branch}'"
+            echo "${cherry}"
+            neednl=1
+        fi
+    done
+)
+
+function git:status() (
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        u:die
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Print the status of git repositories"
+                echo ""
+                echo "Print the status of git repositories inside" \
+                     "'${WORKSPACE_DIR}'."
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                u:die -0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                u:die "${FUNCNAME[0]}: Internal error"
+            ;;
+        esac
+    done
+
+    if [[ -z "${WORKSPACE_DIR}" ]]; then
+        u:die "${FUNCNAME[0]}: WORKSPACE_DIR is not set or is empty"
+    fi
+
+    cd "${WORKSPACE_DIR}"
+    if [[ $? -ne 0 ]]; then
+        u:die "${FUNCNAME[0]}: Cannot cd to '${WORKSPACE_DIR}'"
+    fi
+
+    readarray -t projects < <(_:get_git_dirs . | sort | uniq)
+
+    if [[ ${#projects[@]} -eq 0 ]]; then
+        u:die -0
+    fi
+
+    less -Rf <(
+        _:draw_tree_init
+
+        for project in "${projects[@]}"; do
+            status="$(_:git_project_status "${project}")"
+            if [[ -n "${status}" ]]; then
+                _:draw_tree_set_root "${PWD}"
+                _:draw_tree_add_subtree "${project}"
+                _:draw_tree_annotate <<< "${status}"
+            fi
+        done
+
+        _:draw_tree
+        _:draw_tree_dispose
+    )
+)

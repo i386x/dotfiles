@@ -1,0 +1,4 @@
+# Variables
+
+export WORKSPACE_DIR="${HOME}/development"
+export PS1='\[\033[32m\][\u@\h \W]\$ \[\033[0m\]'

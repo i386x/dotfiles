@@ -1,0 +1,539 @@
+# Utilities
+
+function _:error() {
+    echo -e '\e[31;1m[ERROR]\e[0m\e[31m' $* '\e[0m' >&2
+}
+
+# See https://github.com/zesterer/ariadne/blob/main/src/draw.rs
+function _:draw() {
+    case "${1:-}" in
+        hbar) echo -n '─';;
+        vbar) echo -n '│';;
+        xbar) echo -n '┼';;
+        vbar_break) echo -n '┆';;
+        vbar_gap) echo -n '┆';;
+        uarrow) echo -n '▲';;
+        rarrow) echo -n '▶';;
+        ltop) echo -n '╭';;
+        mtop) echo -n '┬';;
+        rtop) echo -n '╮';;
+        lbot) echo -n '╰';;
+        mbot) echo -n '┴';;
+        rbot) echo -n '╯';;
+        lbox) echo -n '[';;
+        rbox) echo -n ']';;
+        lcross) echo -n '├';;
+        rcross) echo -n '┤';;
+        underbar) echo -n '┬';;
+        underline) echo -n '─';;
+        *) _:error "${FUNCNAME[0]}: Unknown code '${1:-}'"; return 1;;
+    esac
+}
+
+function _:color() {
+    case "${1:-}" in
+        reset) echo -n '\e[0m';;
+        dark-green) echo -n '\e[32;1m';;
+        dark-blue) echo -n '\e[34;1m';;
+        violet) echo -n '\e[35;1m';;
+        green) echo -n '\e[92;1m';;
+        blue) echo -n '\e[94;1m';;
+        cyan) echo -n '\e[96m';;
+        bold-cyan) echo -n '\e[96;1m';;
+        *) _:error "${FUNCNAME[0]}: Unknown color '${1:-}'"; return 1;;
+    esac
+}
+
+function _:hi_command() {
+    echo -ne "$(_:color green)"
+    echo -n  "$(_:draw rarrow) ${1:-}"
+    if [[ -n "${2:-}" ]]; then
+        echo -ne "$(_:color blue)"
+        echo -n  " [${2:-}]"
+    fi
+    echo -e "$(_:color reset)"
+}
+
+function _:draw_tree_dispose() {
+    unset __TREE_LEVELS
+    unset __CURRENT_TREE_LEVEL
+    unset __TREE_LEAVES
+    unset __CURRENT_TREE_PATH
+    unset __CURRENT_TREE_NODE
+    unset __TREE_PATH
+    unset __TREE_DATA
+}
+
+function _:draw_tree_init() {
+    _:draw_tree_dispose
+
+    declare -gA __TREE_LEVELS
+    __CURRENT_TREE_LEVEL=-1
+    declare -gA __TREE_LEAVES
+    declare -ga __CURRENT_TREE_PATH
+    __CURRENT_TREE_NODE=-1
+    declare -ga __TREE_PATH
+    declare -ga __TREE_DATA
+}
+
+function _:draw_tree_set_root() {
+    if [[ ${#__TREE_DATA[@]} -eq 0 ]]; then
+        __TREE_DATA+=( "R:${1:-}" )
+    fi
+}
+
+function _:draw_tree_update_leaves() {
+    local level=${1:-0}
+    local node=${2:-0}
+
+    # Offspring has been added?
+    if [[ ${level} -gt ${__CURRENT_TREE_LEVEL} ]]; then
+        # Parent is no longer a leaf
+        if [[ ${__CURRENT_TREE_NODE} -ge 0 ]]; then
+            if [[ -n "${__TREE_LEAVES[${__CURRENT_TREE_NODE}]}" ]]; then
+                unset __TREE_LEAVES[${__CURRENT_TREE_NODE}]
+            fi
+        fi
+    fi
+    # Assume node is a leaf
+    __TREE_LEAVES[${node}]="leaf"
+    # Record node's level
+    __CURRENT_TREE_LEVEL=${level}
+    # Record node's location
+    __CURRENT_TREE_NODE=${node}
+}
+
+function _:draw_tree_append_nodes() {
+    local index=${1:-0}
+    local lindex
+    local linfo
+
+    while [[ ${index} -lt ${#__TREE_PATH[@]} ]]; do
+        lindex=${#__TREE_DATA[@]}
+        __TREE_DATA+=( "${index}:${__TREE_PATH[${index}]}" )
+        _:draw_tree_update_leaves ${index} ${lindex}
+        linfo="${__TREE_LEVELS[${index}]}"
+        if [[ ! "${linfo}" =~ ,$ ]]; then
+            linfo+=","
+        fi
+        __TREE_LEVELS[${index}]="${linfo}${lindex}"
+        index=$(( index + 1 ))
+    done
+}
+
+function _:draw_tree_insert_nodes() {
+    local index=${1:-0}
+    local lindex=${#__TREE_DATA[@]}
+    local linfo
+
+    # Emit node
+    __TREE_DATA+=( "${index}:${__TREE_PATH[${index}]}" )
+    _:draw_tree_update_leaves ${index} ${lindex}
+    # Update last
+    linfo="${__TREE_LEVELS[${index}]}"
+    linfo="${linfo%,}"
+    __TREE_LEVELS[${index}]="${linfo%,*},${lindex}"
+
+    index=$(( index + 1 ))
+
+    # Close obsolete levels
+    while [[ ${index} -lt ${#__TREE_LEVELS[@]} ]]; do
+        if [[ ! "${__TREE_LEVELS[${index}]}" =~ ,$ ]]; then
+            __TREE_LEVELS[${index}]+=","
+        fi
+        index=$(( index + 1 ))
+    done
+
+    # Append the rest
+    _:draw_tree_append_nodes $(( ${1:-0} + 1 ))
+}
+
+function _:draw_tree_add_subtree() {
+    local index=0
+
+    # `$1` is either in a form `./a/b/c` or `a/b/c` and it must come from
+    # a lexicographical-sorted source without duplicated items.
+    IFS='/' read -r -a __TREE_PATH <<< "${1#./}"
+
+    # Find the point of divergence:
+    while [ \
+        ${index} -lt ${#__TREE_PATH[@]} \
+        -a "${__TREE_PATH[${index}]}" = "${__CURRENT_TREE_PATH[${index}]}" \
+    ]; do
+        index=$(( index + 1 ))
+    done
+
+    # Assume `__TREE_PATH` has at least one element. Then, at this point, we
+    # have these possibilities:
+    #   1. `${__CURRENT_TREE_PATH[${index}]}` is empty (`index` went out of
+    #      range). Then, `${node}` is just a fresh new node to be added,
+    #      together with nodes following it.
+    #   2. `${__CURRENT_TREE_PATH[${index}]}` is not empty. Then the `${node}`,
+    #      together with its followers, introduces a new sub-tree at the
+    #      `${index}` level.
+
+    # Note that `${index} -ge ${#__TREE_PATH[@]}` if and only if `__TREE_PATH`
+    # is a prefix of `__CURRENT_TREE_PATH` which can happen only if the
+    # assumption about a lexicographical-sorted source without duplicated items
+    # is broken.
+
+    if [[ ${index} -ge ${#__CURRENT_TREE_PATH[@]} ]]; then
+        _:draw_tree_append_nodes ${index}
+    else
+        _:draw_tree_insert_nodes ${index}
+    fi
+
+    __CURRENT_TREE_PATH=( "${__TREE_PATH[@]}" )
+}
+
+function _:draw_tree_annotate() {
+    while read -r; do
+        __TREE_DATA+=( "A:${REPLY}" )
+    done
+}
+
+function _:draw_tree_root() {
+    echo -n  "  "
+    echo -ne "$(_:color cyan)"
+    echo -n  "$(_:draw ltop)$(_:draw hbar)$(_:draw lbox)"
+    echo -ne "$(_:color violet)"
+    echo -n  "${1:-}"
+    echo -ne "$(_:color cyan)"
+    echo -n  "$(_:draw rbox)"
+    echo -e  "$(_:color reset)"
+}
+
+function _:draw_tree_branch() {
+    local level=${1:-0}
+    local label="${2:-}"
+    shift 2
+    local args=( "$@" )
+    local index
+    local indent
+
+    for mode in branch gap; do
+        index=0
+        indent="  "
+        echo -ne "$(_:color cyan)"
+        while [[ ${index} -lt ${#args[@]} ]]; do
+            case "${mode}/${args[${index}]}" in
+                branch/fore)
+                    if [[ ${index} -lt ${level} ]]; then
+                        echo -n "${indent}$(_:draw vbar)"
+                    else
+                        echo -n "${indent}$(_:draw lcross)"
+                    fi
+                ;;
+                gap/fore)
+                    echo -n "${indent}$(_:draw vbar)"
+                ;;
+                branch/last)
+                    if [[ ${index} -lt ${level} ]]; then
+                        echo -n "${indent} "
+                    else
+                        echo -n "${indent}$(_:draw lbot)"
+                    fi
+                ;;
+                gap/last)
+                    echo -n "${indent} "
+                ;;
+                branch/parent | branch/aparent | branch/aleaf)
+                    echo -n "${indent// /$(_:draw hbar)}$(_:draw mtop)"
+                ;;
+                gap/parent)
+                    echo -n "${indent}$(_:draw vbar)"
+                ;;
+                gap/aparent | gap/aleaf)
+                    echo -n "${indent}$(_:draw vbar) $(_:draw ltop)"
+                ;;
+                branch/leaf)
+                    echo -n "${indent// /$(_:draw hbar)}$(_:draw hbar)"
+                ;;
+                gap/leaf)
+                    echo -n "${indent} "
+                ;;
+                *)
+                    echo -n "${indent// /?}?"
+                ;;
+            esac
+            indent="        "
+            index=$(( index + 1 ))
+        done
+        if [ "${mode}" = "branch" ]; then
+            echo -n  "$(_:draw hbar)$(_:draw lbox)"
+            echo -ne "$(_:color violet)"
+            echo -n  "${label}"
+            echo -ne "$(_:color cyan)"
+            echo -n  "$(_:draw rbox)"
+        fi
+        echo -e "$(_:color reset)"
+    done
+}
+
+function _:draw_tree_annotation() {
+    local annotation="${1:-}"
+    local drew="${2:-}"
+    shift 2
+    local index=0
+    local indent="  "
+
+    echo -ne "$(_:color cyan)"
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            fore)
+                echo -n "${indent}$(_:draw vbar)"
+            ;;
+            last)
+                echo -n "${indent} "
+            ;;
+            parent | aparent)
+                if [ ${drew} != "annotation" ]; then
+                    echo -n "${indent}"
+                    echo -n "$(_:draw lcross)$(_:draw hbar)$(_:draw rcross)"
+                else
+                    echo -n "${indent}$(_:draw vbar) $(_:draw vbar)"
+                fi
+            ;;
+            leaf | aleaf)
+                if [ ${drew} != "annotation" ]; then
+                    echo -n "${indent}"
+                    echo -n "$(_:draw lbot)$(_:draw hbar)$(_:draw rcross)"
+                else
+                    echo -n "${indent}  $(_:draw vbar)"
+                fi
+            ;;
+            *)
+                echo -n "${indent// /?}?"
+            ;;
+        esac
+        indent="        "
+        shift
+    done
+    echo -ne "$(_:color reset)"
+    echo " ${annotation}"
+}
+
+function _:draw_tree_close_annotation() {
+    local indent="  "
+
+    echo -ne "$(_:color cyan)"
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            fore)
+                echo -n "${indent}$(_:draw vbar)"
+            ;;
+            last)
+                echo -n "${indent} "
+            ;;
+            parent | aparent)
+                echo -n "${indent}$(_:draw vbar) $(_:draw lbot)"
+            ;;
+            leaf | aleaf)
+                echo -n "${indent}  $(_:draw lbot)"
+            ;;
+            *)
+                echo -n "${indent// /?}?"
+            ;;
+        esac
+        indent="        "
+        shift
+    done
+    echo -e "$(_:color reset)"
+}
+
+function _:draw_tree() {
+    local index=0
+    local next=0
+    local state=()
+    local item
+    local level=0
+    local label=""
+    local drew=""
+
+    while [[ ${index} -lt ${#__TREE_DATA[@]} ]]; do
+        item="${__TREE_DATA[${index}]}"
+        if [[ "${item}" =~ ^R:(.*)$ ]]; then
+            _:draw_tree_root "${BASH_REMATCH[1]}"
+            drew="root"
+        elif [[ "${item}" =~ ^([0-9]+):(.*)$ ]]; then
+            level=${BASH_REMATCH[1]}
+            label="${BASH_REMATCH[2]}"
+
+            if [ "${drew}" = "annotation" ]; then
+                _:draw_tree_close_annotation "${state[@]}"
+            fi
+
+            # Update state
+            while [[ ${#state[@]} -gt ${level} ]]; do
+                unset state[-1]
+            done
+            if [[ "${__TREE_LEVELS[${level}]}," == *",${index},"* ]]; then
+                state+=( "last" )
+            else
+                state+=( "fore" )
+            fi
+            next=$(( index + 1 ))
+            if [[ -n "${__TREE_LEAVES[${index}]}" ]]; then
+                if [[ "${__TREE_DATA[${next}]}" =~ ^A: ]]; then
+                    state+=( "aleaf" )
+                else
+                    state+=( "leaf" )
+                fi
+            else
+                if [[ "${__TREE_DATA[${next}]}" =~ ^A: ]]; then
+                    state+=( "aparent" )
+                else
+                    state+=( "parent" )
+                fi
+            fi
+            _:draw_tree_branch ${level} "${label}" "${state[@]}"
+            drew="branch"
+        elif [[ "${item}" =~ ^A:(.*)$ ]]; then
+            _:draw_tree_annotation "${BASH_REMATCH[1]}" "${drew}" "${state[@]}"
+            drew="annotation"
+        fi
+        index=$(( index + 1 ))
+    done
+
+    if [ "${drew}" = "annotation" ]; then
+        _:draw_tree_close_annotation "${state[@]}"
+    fi
+}
+
+function _:test_draw_tree() (
+    _:draw_tree_init
+    _:draw_tree_set_root @
+    _:draw_tree_add_subtree ./a
+    _:draw_tree_annotate <<< "$(echo anno 3; echo anno 4)"
+    _:draw_tree_add_subtree ./a/b/c/d
+    _:draw_tree_annotate <<< "$(echo anno 1; echo anno 2)"
+    _:draw_tree_add_subtree ./a/b/e
+    _:draw_tree_add_subtree ./a/b/f/g
+    _:draw_tree_add_subtree ./h/i
+    _:draw_tree_annotate <<< "$(echo anno 5)"
+    _:draw_tree
+    _:draw_tree_dispose
+)
+
+function u:error() {
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error ${REPLY}; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help] [MESSAGE]..."
+                echo "Print MESSAGE in red to the standard error output"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                return 0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                _:error "${FUNCNAME[0]}: Internal error"
+                return 1
+            ;;
+        esac
+    done
+
+    _:error $*
+}
+
+function u:die() {
+    local opts
+    local exitcode=1
+
+    opts=$(
+        while [[ $# -gt 0 ]]; do
+            if [[ "${1:-}" =~ ^-[0-9]+$ ]]; then
+                echo -n " --exitcode" "'${1:1}'"
+            else
+                echo -n " '${1:-}'"
+            fi
+            shift
+        done
+    )
+
+    eval set -- "${opts}"
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help,exitcode: \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [OPTION]... [MESSAGE]..."
+                echo "Print MESSAGE and terminate the process"
+                echo ""
+                echo "Print MESSAGE in red to the standard error output and"
+                echo "then exit from the process with the given exit code" \
+                     "(1 by default)."
+                echo ""
+                echo "Options:"
+                echo "  -h, --help            print this screen and exit"
+                echo "  -<N>, --exitcode=N    specify the exit code, e.g. -0,"
+                echo "                        -2, --exitcode=3, etc."
+                echo ""
+                echo "Examples:"
+                echo "  \`u:die -2 \"Operation failed\"\` prints \"Operation" \
+                        "failed\""
+                echo "  to the standard error output and terminate the" \
+                        "process with"
+                echo "  the exit code 2."
+                return 0
+            ;;
+            --exitcode)
+                exitcode="${2:-1}"
+                shift 2
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                _:error "${FUNCNAME[0]}: Internal error"
+                return 1
+            ;;
+        esac
+    done
+
+    if [[ $# -gt 0 ]]; then
+        _:error $*
+    fi
+
+    exit ${exitcode}
+}
+
+function u:build_help() (
+    :
+)

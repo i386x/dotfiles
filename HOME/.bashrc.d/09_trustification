@@ -1,0 +1,440 @@
+# Trustification utilities
+
+function _:trustification_check_project() {
+    case "$(git:project)" in
+        trustification \
+        | trustify \
+        | guac-rs \
+        | sikula)
+            return 0
+        ;;
+    esac
+    return 1
+}
+
+function _:assert_trustification() {
+    _:trustification_check_project
+    if [[ $? -ne 0 ]]; then
+        u:die "${FUNCNAME[1]}:" \
+            "Please run me from within a Trustification project"
+    fi
+}
+
+function _:trustification_topdir() {
+    _:assert_trustification
+    _:git_cd_topdir || u:die
+}
+
+function _:trustification_config() {
+    echo "${HOME}/.trustificationrc"
+}
+
+function _:trustification_load_config() {
+    local config="$(_:trustification_config)"
+
+    if [[ -s "${config}" ]]; then
+        source "${config}"
+    fi
+}
+
+function _:trustification_config_variable() {
+    if [[ -z "${1:-}" ]]; then
+        return
+    fi
+    if [[ -v "$1" && -n "${!1:-}" ]]; then
+        echo "export $1=\"${!1}\""
+    else
+        echo "unset $1"
+    fi
+}
+
+function t:cfg() (
+    local opts
+    local c
+    local r
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --longoptions jobs:,jobs-default \
+            --longoptions reset \
+            --longoptions rust-log:,no-rust-log,rust-log-off \
+            --longoptions show \
+            --longoptions with-all \
+            --longoptions with-collectors,without-collectors \
+            --longoptions with-guac,without-guac \
+            --longoptions with-trustification,without-trustification \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        u:die
+    fi
+
+    eval set -- "${opts}"
+
+    _:trustification_load_config
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [OPTION]..."
+                echo "Configure Trustification"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help                  print this screen and exit"
+                echo "  --jobs=N                    set CARGO_BUILD_JOBS" \
+                                                   "variable to N"
+                echo "  --jobs-default              unset CARGO_BUILD_JOBS" \
+                                                   "variable"
+                echo "  --no-rust-log               unset RUST_LOG variable"
+                echo "  --reset                     unset all variables"
+                echo "  --rust-log=FILTERS          set RUST_LOG variable to" \
+                                                   "FILTERS"
+                echo "  --rust-log-off              unset RUST_LOG variable"
+                echo "  --show                      show all variables"
+                echo "  --with-all                  set all WITH_* variables" \
+                                                   "to \"yes\""
+                echo "  --with-collectors           set WITH_COLLECTORS" \
+                                                   "variable to \"yes\""
+                echo "  --with-guac                 set WITH_GUAC variable" \
+                                                   "to \"yes\""
+                echo "  --with-trustification       set WITH_TRUSTIFICATION" \
+                                                   "variable to \"yes\""
+                echo "  --without-collectors        unset WITH_COLLECTORS" \
+                                                   "variable"
+                echo "  --without-guac              unset WITH_GUAC" \
+                                                   "variable"
+                echo "  --without-trustification    unset" \
+                                                   "WITH_TRUSTIFICATION" \
+                                                   "variable"
+                u:die -0
+            ;;
+            --jobs)
+                export CARGO_BUILD_JOBS="${2:-default}"
+                shift 2
+            ;;
+            --jobs-default)
+                unset CARGO_BUILD_JOBS
+                shift
+            ;;
+            --no-rust-log | --rust-log-off)
+                unset RUST_LOG
+                shift
+            ;;
+            --reset)
+                unset \
+                    CARGO_BUILD_JOBS \
+                    RUST_LOG \
+                    WITH_COLLECTORS \
+                    WITH_GUAC \
+                    WITH_TRUSTIFICATION
+                shift
+            ;;
+            --rust-log)
+                export RUST_LOG="${2:-}"
+                shift 2
+            ;;
+            --show)
+                c="$(_:color bold-cyan)"
+                r="$(_:color reset)"
+                echo -e "CARGO_BUILD_JOBS=${c}${CARGO_BUILD_JOBS:-}${r}"
+                echo -e "RUST_LOG=${c}${RUST_LOG:-}${r}"
+                echo -e "WITH_COLLECTORS=${c}${WITH_COLLECTORS:-}${r}"
+                echo -e "WITH_GUAC=${c}${WITH_GUAC:-}${r}"
+                echo -e "WITH_TRUSTIFICATION=${c}${WITH_TRUSTIFICATION:-}${r}"
+                shift
+            ;;
+            --with-all)
+                export WITH_COLLECTORS="yes"
+                export WITH_GUAC="yes"
+                export WITH_TRUSTIFICATION="yes"
+                shift
+            ;;
+            --with-collectors)
+                export WITH_COLLECTORS="yes"
+                shift
+            ;;
+            --with-guac)
+                export WITH_GUAC="yes"
+                shift
+            ;;
+            --with-trustification)
+                export WITH_TRUSTIFICATION="yes"
+                shift
+            ;;
+            --without-collectors)
+                unset WITH_COLLECTORS
+                shift
+            ;;
+            --without-guac)
+                unset WITH_GUAC
+                shift
+            ;;
+            --without-trustification)
+                unset WITH_TRUSTIFICATION
+                shift
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                u:die "${FUNCNAME[0]}: Internal error"
+            ;;
+        esac
+    done
+
+    {
+        _:trustification_config_variable CARGO_BUILD_JOBS
+        _:trustification_config_variable RUST_LOG
+        _:trustification_config_variable WITH_COLLECTORS
+        _:trustification_config_variable WITH_GUAC
+        _:trustification_config_variable WITH_TRUSTIFICATION
+    } > "$(_:trustification_config)"
+)
+
+function _:trustification_compose() (
+    _:trustification_topdir
+
+    _:trustification_load_config
+
+    case "$(git:project)" in
+        trustification)
+            export SELINUX_VOLUME_OPTIONS=':Z'
+            podman-compose \
+                -f ./deploy/compose/compose.yaml \
+                ${WITH_GUAC:+-f \
+                    ./deploy/compose/compose-guac.yaml \
+                } \
+                ${WITH_TRUSTIFICATION:+-f \
+                    ./deploy/compose/compose-trustification.yaml \
+                } \
+                ${WITH_COLLECTORS:+-f \
+                    ./deploy/compose/compose-collectors.yaml \
+                } \
+                "$@"
+        ;;
+        *)
+            u:die "${FUNCNAME[0]} is not implemented for $(git:project) yet"
+        ;;
+    esac
+)
+
+function t:up() (
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        u:die
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Bring up Trustification containers"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                u:die -0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                u:die "${FUNCNAME[0]}: Internal error"
+            ;;
+        esac
+    done
+
+    _:compose_up _:trustification_compose
+)
+
+function t:down() (
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        u:die
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Put down Trustification containers"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                u:die -0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                u:die "${FUNCNAME[0]}: Internal error"
+            ;;
+        esac
+    done
+
+    _:compose_down _:trustification_compose
+)
+
+function t:logs() (
+    if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+        echo "Usage: ${FUNCNAME[0]} [-h|--help] [ARG]..."
+        echo "Display Trustification containers logs"
+        echo ""
+        echo "The rest of the command line arguments are passed to" \
+             "\`podman-compose logs\`."
+        echo ""
+        echo "Options:"
+        echo "  -h, --help    print this screen and exit"
+        u:die -0
+    elif [[ "${1:-}" == "--" ]]; then
+        shift
+    fi
+
+    _:compose_logs _:trustification_compose "$@"
+)
+
+function _:trustification_lint() {
+    cargo fmt --check
+    cargo fmt --check --manifest-path spog/ui/Cargo.toml
+    cargo clippy --all-targets --all-features -- \
+        -D warnings -D clippy::unwrap_used
+}
+
+function t:lint() (
+    local opts
+    local linter
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        u:die
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Run checks on a project from Trustification"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                u:die -0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                u:die "${FUNCNAME[0]}: Internal error"
+            ;;
+        esac
+    done
+
+    _:trustification_topdir
+
+    linter="_:$(git:project)_lint"
+    if [[ "$(type -t "${linter}")" != "function" ]]; then
+        u:die "${FUNCNAME[0]}: ${linter} is not implemented"
+    fi
+
+    "${linter}"
+)
+
+function _:trustification_test_opts() {
+    local ddash_seen=0
+
+    while [[ $# -gt 0 ]]; do
+        echo -n " '${1:-}'"
+        if [[ "${1:-}" == "--" && ${ddash_seen} -eq 0 ]]; then
+            echo -n " '--exact' '--nocapture' '--test-threads' '1'"
+            ddash_seen=1
+        fi
+        shift
+    done
+
+    if [[ ${ddash_seen} -eq 0 ]]; then
+        echo -n " '--' '--exact' '--nocapture' '--test-threads' '1'"
+    fi
+}
+
+function _:trustification_test() {
+    eval set -- "$(_:trustification_test_opts "$@")"
+
+    RUST_LOG=${RUST_LOG:-tantivy=off,info} echo cargo test \
+        -p integration-tests \
+        "$@"
+}
+
+function t:test() (
+    local tester
+
+    if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+        echo "Usage: ${FUNCNAME[0]} [-h|--help] [ARG]..."
+        echo "Run a test suite on a project from Trustification"
+        echo ""
+        echo "The rest of unprocessed arguments is passed to \`cargo test\`."
+        echo ""
+        echo "Options:"
+        echo "  -h, --help    print this screen and exit"
+        echo ""
+        echo "Examples:"
+        echo "  ${FUNCNAME[0]} -- --help"
+        echo "      like \`cargo test --help\`"
+        echo "  ${FUNCNAME[0]} -- -- --help"
+        echo "      like \`cargo test -- --help\`"
+        echo "  ${FUNCNAME[0]} --test foo -- bar"
+        echo "      run a test named \`bar\` from an integration test \`foo\`"
+        u:die -0
+    elif [[ "${1:-}" == "--" ]]; then
+        shift
+    fi
+
+    _:trustification_topdir
+
+    tester="_:$(git:project)_test"
+    if [[ "$(type -t "${tester}")" != "function" ]]; then
+        u:die "${FUNCNAME[0]}: ${tester} is not implemented"
+    fi
+
+    "${tester}" "$@"
+)
