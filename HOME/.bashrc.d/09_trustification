@@ -30,8 +30,9 @@ function _:trustification_config() {
 }
 
 function _:trustification_load_config() {
-    local config="$(_:trustification_config)"
+    local config
 
+    config="$(_:trustification_config)"
     if [[ -s "${config}" ]]; then
         source "${config}"
     fi
@@ -381,7 +382,9 @@ function t:lint() (
 )
 
 function _:trustification_test_opts() {
-    local ddash_seen=0
+    local ddash_seen
+
+    ddash_seen=0
 
     while [[ $# -gt 0 ]]; do
         echo -n " '${1:-}'"
@@ -400,7 +403,7 @@ function _:trustification_test_opts() {
 function _:trustification_test() {
     eval set -- "$(_:trustification_test_opts "$@")"
 
-    RUST_LOG=${RUST_LOG:-tantivy=off,info} echo cargo test \
+    RUST_LOG=${RUST_LOG:-tantivy=off,info} cargo test \
         -p integration-tests \
         "$@"
 }

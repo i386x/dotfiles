@@ -2,8 +2,8 @@
 
 function pdf:merge() (
     local opts
-    local output=""
-    local inputs=()
+    local output
+    declare -a inputs
 
     opts=$(
         getopt \
@@ -19,6 +19,9 @@ function pdf:merge() (
     fi
 
     eval set -- "${opts}"
+
+    output=""
+    inputs=()
 
     while [[ $# -gt 0 ]]; do
         case "${1:-}" in

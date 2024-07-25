@@ -6,10 +6,11 @@ function _:venv_root() {
 
 function py:venv() {
     local opts
-    local root="$(_:venv_root)"
-    local actions=()
-    local venv=""
-    local exitcode=0
+    local root
+    declare -a actions
+    local venv
+    local exitcode
+    local action
 
     opts=$(
         getopt \
@@ -25,6 +26,10 @@ function py:venv() {
     fi
 
     eval set -- "${opts}"
+
+    root="$(_:venv_root)"
+    actions=()
+    venv=""
 
     while [[ $# -gt 0 ]]; do
         case "${1:-}" in
@@ -65,6 +70,8 @@ function py:venv() {
             ;;
         esac
     done
+
+    exitcode=0
 
     if [[ ${#actions[@]} -gt 0 ]]; then
         for action in "${actions[@]}"; do

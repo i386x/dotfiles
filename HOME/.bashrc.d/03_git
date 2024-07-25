@@ -2,7 +2,7 @@
 
 function git:project() {
     local opts
-    local project=""
+    local project
 
     opts=$(
         getopt \
@@ -89,7 +89,9 @@ function git:topdir() {
 }
 
 function _:git_cd_topdir() {
-    local topdir="$(git:topdir)"
+    local topdir
+
+    topdir="$(git:topdir)"
 
     if [[ -z "${topdir}" ]]; then
         _:error "${FUNCNAME[0]}: Failed to find git top level directory"
@@ -137,11 +139,14 @@ function git:du() (
         esac
     done
 
-    _:git_cd_topdir || u:die
+    _:git_cd_topdir || u:die --exitcode $?
     du -hs .
 )
 
 function _:get_git_dirs() (
+    declare -a dirs
+    local d
+
     readarray -t dirs < <(find "${1:-.}" -maxdepth 1 -type d -print)
     for d in "${dirs[@]}"; do
         if [[ -d "${d}/.git" ]]; then
@@ -153,7 +158,13 @@ function _:get_git_dirs() (
 )
 
 function _:git_project_status() (
-    local neednl=0
+    declare -A locals
+    declare -A remotes
+    local current
+    local neednl
+    local branch
+    local remote
+    local cherry
 
     cd "${1:-.}"
 
@@ -162,9 +173,6 @@ function _:git_project_status() (
         git -c color.ui=always status
         u:die -0
     fi
-
-    declare -A locals
-    declare -A remotes
 
     while read -r; do
         key=$(echo ${REPLY} | sed -e 's/\*//g' -e 's/ //g')
@@ -186,6 +194,7 @@ function _:git_project_status() (
     done < <(git branch -r --color=never)
 
     current="$(git branch --show-current)"
+    neednl=0
 
     for branch in "${!locals[@]}"; do
         if [[ "${locals[${branch}]}" -ne 1 ]]; then
@@ -222,6 +231,7 @@ function _:git_project_status() (
 
 function git:status() (
     local opts
+    declare -a projects
 
     opts=$(
         getopt \
