@@ -46,6 +46,14 @@ function error() {
   exit ${2:-1}
 }
 
+function file_lookup() {
+  if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    echo "${FILES[$1]}"
+  else
+    echo "${1:-}"
+  fi
+}
+
 function runcmd() {
   local E=0
 
@@ -88,8 +96,8 @@ function ensure_directory() {
 
 function file_backup() {
   shift
-  local D="${HERE}/$(dirname "${FILES[$1]:-$1}")"
-  local P="$(destpath "${FILES[$1]:-$1}")"
+  local D="${HERE}/$(dirname "$(file_lookup "$1")")"
+  local P="$(destpath "$(file_lookup "$1")")"
 
   if [[ -e "${P}" ]]; then
     ensure_directory "${D}"
@@ -118,8 +126,8 @@ function backup_old() {
 
 function file_restore() {
   shift
-  local P="${HERE}/${FILES[$1]:-$1}"
-  local D="$(destpath "${FILES[$1]:-$1}")"
+  local P="${HERE}/$(file_lookup "$1")"
+  local D="$(destpath "$(file_lookup "$1")")"
 
   if [[ -e "${P}" ]]; then
     ensure_directory "$(dirname ${D})"
