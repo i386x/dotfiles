@@ -5,7 +5,7 @@ function _:compose_up() {
 
     composer="${1:-true}"
     shift
-    "${composer}" up -d
+    "${composer}" up -d "$@"
 }
 
 function _:compose_down() {
@@ -13,7 +13,7 @@ function _:compose_down() {
 
     composer="${1:-true}"
     shift
-    "${composer}" down
+    "${composer}" down "$@"
 }
 
 function _:compose_logs() {

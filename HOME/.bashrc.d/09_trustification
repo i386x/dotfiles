@@ -226,85 +226,39 @@ function _:trustification_compose() (
 )
 
 function t:up() (
-    local opts
-
-    opts=$(
-        getopt \
-            --options h \
-            --longoptions help \
-            --name ${FUNCNAME[0]} \
-            -- \
-            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
-    )
-
-    if [[ $? -ne 0 ]]; then
-        u:die
+    if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+        echo "Usage: ${FUNCNAME[0]} [-h|--help] [ARG]..."
+        echo "Bring up Trustification containers"
+        echo ""
+        echo "The rest of the command line arguments are passed to" \
+             "\`podman-compose up\`."
+        echo ""
+        echo "Options:"
+        echo "  -h, --help    print this screen and exit"
+        u:die -0
+    elif [[ "${1:-}" == "--" ]]; then
+        shift
     fi
 
-    eval set -- "${opts}"
-
-    while [[ $# -gt 0 ]]; do
-        case "${1:-}" in
-            -h | --help)
-                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
-                echo "Bring up Trustification containers"
-                echo ""
-                echo "Options:"
-                echo "  -h, --help    print this screen and exit"
-                u:die -0
-            ;;
-            --)
-                shift
-                break
-            ;;
-            *)
-                u:die "${FUNCNAME[0]}: Internal error"
-            ;;
-        esac
-    done
-
-    _:compose_up _:trustification_compose
+    _:compose_up _:trustification_compose "$@"
 )
 
 function t:down() (
-    local opts
-
-    opts=$(
-        getopt \
-            --options h \
-            --longoptions help \
-            --name ${FUNCNAME[0]} \
-            -- \
-            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
-    )
-
-    if [[ $? -ne 0 ]]; then
-        u:die
+    if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
+        echo "Usage: ${FUNCNAME[0]} [-h|--help] [ARG]..."
+        echo "Put down Trustification containers"
+        echo ""
+        echo "The rest of the command line arguments are passed to" \
+             "\`podman-compose down\`."
+        echo ""
+        echo "Options:"
+        echo "  -h, --help    print this screen and exit"
+        u:die -0
+    elif [[ "${1:-}" == "--" ]]; then
+        shift
     fi
 
-    eval set -- "${opts}"
-
-    while [[ $# -gt 0 ]]; do
-        case "${1:-}" in
-            -h | --help)
-                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
-                echo "Put down Trustification containers"
-                echo ""
-                echo "Options:"
-                echo "  -h, --help    print this screen and exit"
-                u:die -0
-            ;;
-            --)
-                shift
-                break
-            ;;
-            *)
-                u:die "${FUNCNAME[0]}: Internal error"
-            ;;
-        esac
-    done
-
-    _:compose_down _:trustification_compose
+    _:compose_down _:trustification_compose "$@"
 )
 
 function t:logs() (

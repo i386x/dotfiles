@@ -198,7 +198,9 @@ function _:git_project_status() (
 
     for branch in "${!locals[@]}"; do
         if [[ "${locals[${branch}]}" -ne 1 ]]; then
-            git checkout "${branch}" >/dev/null 2>&1
+            git checkout "${branch}" \
+                >/dev/null \
+                2> >(while read -r; do _:error ${REPLY} 2>&1; done)
         fi
 
         if [[ -n "$(git status --porcelain)" ]]; then
@@ -211,13 +213,18 @@ function _:git_project_status() (
         fi
 
         if [[ "${locals[${branch}]}" -ne 1 ]]; then
-            git checkout "${current}" >/dev/null 2>&1
+            git checkout "${current}" \
+                >/dev/null \
+                2> >(while read -r; do _:error ${REPLY} 2>&1; done)
         fi
     done
 
     for remote in "${!remotes[@]}"; do
         branch="${remotes[${remote}]}"
-        cherry="$(git cherry -v "${remote}" "${branch}")"
+        cherry="$( \
+            git cherry -v "${remote}" "${branch}" \
+            2> >(while read -r; do _:error ${REPLY} 2>&1; done) \
+        )"
         if [[ -n "${cherry}" ]]; then
             if [[ ${neednl} -eq 1 ]]; then
                 echo ""
