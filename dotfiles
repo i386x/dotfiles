@@ -11,6 +11,7 @@ STDERR="$(mktemp /tmp/${ME}XXXXX.stderr)"
 FILES=(
   'HOME/.bashrc.d'
   'HOME/.config/enchant/en_US.dic'
+  'HOME/.config/git/.gitmessage'
 )
 
 red=1

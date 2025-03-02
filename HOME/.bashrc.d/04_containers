@@ -44,3 +44,129 @@ function c:ps() {
 
     podman ps "$@"
 }
+
+function c:du() {
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Check how many space is occupied by containers"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                return 0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                _:error "${FUNCNAME[0]}: Internal error"
+                return 1
+            ;;
+        esac
+    done
+
+    podman unshare du -hs ~/.local/share/containers/storage/overlay
+}
+
+function c:prune() {
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Remove all unused container data"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                return 0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                _:error "${FUNCNAME[0]}: Internal error"
+                return 1
+            ;;
+        esac
+    done
+
+    podman system prune -af
+}
+
+function c:reset() {
+    local opts
+
+    opts=$(
+        getopt \
+            --options h \
+            --longoptions help \
+            --name ${FUNCNAME[0]} \
+            -- \
+            "$@" 2> >(while read -r; do _:error "${REPLY}"; done)
+    )
+
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+
+    eval set -- "${opts}"
+
+    while [[ $# -gt 0 ]]; do
+        case "${1:-}" in
+            -h | --help)
+                echo "Usage: ${FUNCNAME[0]} [-h|--help]"
+                echo "Reset container storage back to default state"
+                echo ""
+                echo "Options:"
+                echo "  -h, --help    print this screen and exit"
+                return 0
+            ;;
+            --)
+                shift
+                break
+            ;;
+            *)
+                _:error "${FUNCNAME[0]}: Internal error"
+                return 1
+            ;;
+        esac
+    done
+
+    podman system reset -f
+}
